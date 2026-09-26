@@ -1,0 +1,142 @@
+{{- /*gotype:[]db.Item */ -}}
+<!Doctype html>
+<head>
+    <title>Go Web</title>
+    <style>
+        .container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+            grid-gap: 1rem;
+        }
+
+        .card {
+            text-align: center;
+            padding: 0.5rem;
+            border: 1px solid #000;
+        }
+
+        img {
+            max-width: 14rem;
+            max-height: 14rem;
+            width: 14rem;
+            height: 14rem;
+            object-fit: contain;
+        }
+
+        .img-container {
+            width: 14rem;
+            height: 14rem;
+            overflow: hidden;
+        }
+    </style>
+    <script>
+        const send = async (id, type) => {
+            console.log(id, type)
+            if (type === 2) {
+                const sound = await fetch(`/api/file/${id}/`)
+
+                const audio = new Audio(sound.url)
+                await audio.play()
+
+                return
+            }
+            await fetch(`/api/toggle/${id}/`)
+        }
+        const toggleDecorations = async (set) => {
+            await fetch(`/api/settings/decoration/?deco=${set}`)
+        }
+        const taskbar = async (set) => {
+            await fetch(`/api/settings/taskbar/?taskbar=${set}`)
+        }
+        const icon = async () => {
+            const val = document.getElementById("icon").value
+            await fetch(`/api/settings/icon/?icon=${val}`)
+        }
+
+        const add = async () => {
+            const name = document.getElementById("addName").value
+            if (name.trim() === "") {
+                return;
+            }
+            const file = document.getElementById("addFile").files
+
+            if (!file || file.length === 0) {
+                console.log("Please select a file to upload")
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append("info", JSON.stringify({ name: name.trim() }));
+                formData.append("file", file[0]);
+
+                const res = await fetch("http://localhost:8080/api/items/", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (!res.ok) {
+                    console.error("Upload failed:", res.statusText, await res.text());
+                    throw new Error(`Upload failed with status ${res.status}`);
+                }
+
+            } catch (err) {
+                console.error("Upload error:", err);
+            } finally {
+                window.location.reload();
+            }
+        }
+    </script>
+</head>
+<body>
+<div class="container">
+    {{range . }}
+        <div onclick="send('{{.ID}}', {{.Type}});" class="card">
+            <div class="img-container">
+                {{if eq .Type 2}}
+                    <img src="/sound.svg" alt="sound">
+                {{else}}
+                    <img src="/api/file/{{.ID}}" alt="{{.Name}}">
+                {{end}}
+            </div>
+            <p>{{.Name}}</p>
+            <p>{{.Created}}</p>
+        </div>
+    {{end}}
+</div>
+
+<div>
+    <h2>Add</h2>
+    <form>
+        <label for="addName">Name</label>
+        <input type="text" id="addName" name="name">
+        <label for="addFile">File</label>
+        <input type="file" id="addFile" name="file">
+        <input type="submit" formaction="javascript:add()" value="Submit">
+    </form>
+</div>
+
+<div>
+    <h2>Settings</h2>
+    <div>
+        <a href="javascript:toggleDecorations(true);">Set Decorations visible</a>
+        <a href="javascript:toggleDecorations(false);">Set Decorations invisible</a><br>
+        <a href="javascript:taskbar(true)">Set Taskbar visible</a>
+        <a href="javascript:taskbar(false)">Set Taskbar invisible</a>
+    </div>
+    <div>
+        <form action="/api/settings/icon/" method="get">
+            <label for="icon">Icon</label>
+            <select name="icon" id="icon">
+                <option value="0">Default (KEKW)</option>
+                {{- range . }}
+                    {{- if eq .Type 1 }}
+                <option value="{{.ID}}">{{.Name}}</option>
+                    {{- end -}}
+                {{- end}}
+            </select>
+            <input type="submit" formaction="javascript:icon()" value="Submit">
+        </form>
+    </div>
+</div>
+</body>

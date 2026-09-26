@@ -1,0 +1,19 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "query"
+    schema: "schema"
+    gen:
+      go:
+        package: "db"
+        out: "."
+
+overrides:
+  go:
+    overrides:
+      - db_type: "VARCHAR[16]"
+        go_type: "uuid.UUID"
+      - db_type: "INTEGER"
+        go_type: "int"
+      - db_type: "INT"
+        go_type: "int"
