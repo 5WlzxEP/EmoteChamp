@@ -75,6 +75,12 @@ type state struct {
 	IconFdSize  int
 	iconMap     []byte
 
+	// shape
+	cursorShapeManager uint32
+	cursorShapeDevice  uint32
+	cursorCurrent      Cursor
+	cursorLatestEnter  uint32
+
 	plasmaShell   uint32
 	plasmaSurface uint32
 
@@ -298,6 +304,8 @@ func (s *state) handleRegistryEvent(opcode uint16, msg []byte) {
 			s.iconManager = s.waylandWLRegistryBind(name, iface, ifaceLen, version)
 		case "org_kde_plasma_shell":
 			s.plasmaShell = s.waylandWLRegistryBind(name, iface, ifaceLen, version)
+		case "wp_cursor_shape_manager_v1":
+			s.cursorShapeManager = s.waylandWLRegistryBind(name, iface, ifaceLen, version)
 		default:
 			slog.Debug("Not binding to", "iface", ifaceName, "version", version)
 		}
@@ -481,19 +489,23 @@ func (s *state) handleWlPointerEvent(opcode uint16, msg []byte) {
 		sy := int32(bufReadU32(msg, &offset)) >> 8
 		s.ptrX, s.ptrY = sx, sy
 		s.pointerOverSurface = true
+		s.cursorLatestEnter = serial
 		//log.Printf("<- wl_pointer@%d.enter: serial=%d pos=%d,%d\n", s.wlPointer, serial, sx, sy)
 		slog.Debug("<- wl_pointer@enter", "wlPointer", s.wlPointer, "serial", serial, "sx", sx, "sy", sy)
+		updateCursor(s)
 	case Leave:
 		serial := bufReadU32(msg, &offset)
 		bufReadU32(msg, &offset) // surface
 		s.pointerOverSurface = false
 		//log.Printf("<- wl_pointer@%d.leave: serial=%d\n", s.wlPointer, serial)
 		slog.Debug("<- wl_pointer@leave", "wlPointer", s.wlPointer, "serial", serial)
+		s.cursorCurrent = 0
 	case Motion:
 		bufReadU32(msg, &offset)
 		sx := int32(bufReadU32(msg, &offset)) >> 8
 		sy := int32(bufReadU32(msg, &offset)) >> 8
 		s.ptrX, s.ptrY = sx, sy
+
 	case Button:
 		serial := bufReadU32(msg, &offset)
 		bufReadU32(msg, &offset) // time
@@ -521,8 +533,22 @@ func (s *state) handleWlPointerEvent(opcode uint16, msg []byte) {
 	// scroll events, maybe zoom?
 	case Frame:
 		//ignore
+		updateCursor(s)
 	default:
 		log.Printf("<- wl_pointer@%d.%d: unhandled\n", s.wlPointer, opcode)
+	}
+}
+
+func updateCursor(s *state) {
+	inCorner := s.pointerOverSurface &&
+		s.ptrX >= int32(s.viewWidth)-max(resizeHandleSize, int32(0.1*float32(s.viewWidth))) &&
+		s.ptrY >= int32(s.viewHeight)-max(resizeHandleSize, int32(0.1*float32(s.viewHeight)))
+	if inCorner && s.cursorCurrent != nwseResizecursor {
+		s.ShapeSetCursor(s.cursorLatestEnter, nwseResizecursor)
+		s.cursorCurrent = nwseResizecursor
+	} else if !inCorner && s.cursorCurrent != defaultCursor {
+		s.ShapeSetCursor(s.cursorLatestEnter, defaultCursor)
+		s.cursorCurrent = defaultCursor
 	}
 }
 
@@ -605,25 +631,17 @@ func (s *state) waylandWLSurfaceDamage() {
 		return
 	}
 
-	var msg [32]byte
-	off := 0
+	var msg [24]byte
 
-	binary.LittleEndian.PutUint32(msg[off:], s.wlSurface)
-	off += 4
-	binary.LittleEndian.PutUint16(msg[off:], waylandWLSurfaceDamageOpcode)
-	off += 2
-	binary.LittleEndian.PutUint16(msg[off:], waylandHeaderSize+4*4)
-	off += 2
-	binary.LittleEndian.PutUint32(msg[off:], 0) // x
-	off += 4
-	binary.LittleEndian.PutUint32(msg[off:], 0) // y
-	off += 4
-	binary.LittleEndian.PutUint32(msg[off:], max(s.w, s.viewWidth)) // width
-	off += 4
-	binary.LittleEndian.PutUint32(msg[off:], max(s.h, s.viewHeight)) // height
-	off += 4
+	binary.LittleEndian.PutUint32(msg[:], s.wlSurface)
+	binary.LittleEndian.PutUint16(msg[4:], waylandWLSurfaceDamageOpcode)
+	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize+4*4)
+	binary.LittleEndian.PutUint32(msg[8:], 0)                       // x
+	binary.LittleEndian.PutUint32(msg[12:], 0)                      // y
+	binary.LittleEndian.PutUint32(msg[16:], max(s.w, s.viewWidth))  // width
+	binary.LittleEndian.PutUint32(msg[20:], max(s.h, s.viewHeight)) // height
 
-	_, _ = unix.Write(s.fd, msg[:off])
+	_, _ = unix.Write(s.fd, msg[:])
 	slog.Log(context.Background(), -5, "-> wl_surface@damage", "surface", s.wlSurface, "width", s.w, "height", s.h)
 }
 
@@ -699,7 +717,7 @@ func (s *state) waylandXDGToplevelResize(serial uint32, edges uint32) {
 
 	binary.LittleEndian.PutUint32(msg[:], s.xdgToplevel)
 	binary.LittleEndian.PutUint16(msg[4:], waylandXDGToplevelResizeOpcode)
-	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize+4*3)
+	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize+12)
 
 	binary.LittleEndian.PutUint32(msg[8:], s.wlSeat)
 	binary.LittleEndian.PutUint32(msg[12:], serial)
@@ -920,6 +938,10 @@ func (s *state) createWindow() {
 	// Get a wl_pointer from the bound seat once it's available.
 	if s.wlSeat != 0 && s.wlPointer == 0 {
 		s.wlPointer = s.waylandWLSeatGetPointer()
+
+		if s.cursorShapeManager != 0 {
+			s.cursorShapeDevice = s.ShapeGetPointer(s.wlPointer)
+		}
 	}
 }
 
@@ -1046,34 +1068,25 @@ func createSharedMemoryFile(size uint64) (int, []byte, error) {
 
 func (s *state) waylandWLShmPoolResize() {
 	var msg [12]byte
-	off := 0
 
-	binary.LittleEndian.PutUint32(msg[off:], s.wlSHMPool)
-	off += 4
-	binary.LittleEndian.PutUint16(msg[off:], waylandWLShmPoolResizeOpcode)
-	off += 2
-	binary.LittleEndian.PutUint16(msg[off:], waylandHeaderSize+4)
-	off += 2
+	binary.LittleEndian.PutUint32(msg[:], s.wlSHMPool)
+	binary.LittleEndian.PutUint16(msg[4:], waylandWLShmPoolResizeOpcode)
+	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize+4)
 
-	binary.LittleEndian.PutUint32(msg[off:], s.shmPoolSize)
-	off += 4
+	binary.LittleEndian.PutUint32(msg[8:], s.shmPoolSize)
 
-	_, _ = unix.Write(s.fd, msg[:off])
+	_, _ = unix.Write(s.fd, msg[:])
 	slog.Debug("-> wl_shm_pool@resize", "pool", s.wlSHMPool, "size", s.shmPoolSize)
 }
 
 func (s *state) waylandWLBufferDestroy() {
 	var msg [8]byte
-	off := 0
 
-	binary.LittleEndian.PutUint32(msg[off:], s.wlBuffer)
-	off += 4
-	binary.LittleEndian.PutUint16(msg[off:], waylandWLBufferDestroyOpcode)
-	off += 2
-	binary.LittleEndian.PutUint16(msg[off:], waylandHeaderSize)
-	off += 2
+	binary.LittleEndian.PutUint32(msg[:], s.wlBuffer)
+	binary.LittleEndian.PutUint16(msg[4:], waylandWLBufferDestroyOpcode)
+	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize)
 
-	_, _ = unix.Write(s.fd, msg[:off])
+	_, _ = unix.Write(s.fd, msg[:])
 	slog.Debug("-> wl_buffer@destroy", "buffer", s.wlBuffer)
 
 	s.wlBuffer = 0
@@ -1156,6 +1169,7 @@ func (s *state) waylandDestroyWindow() {
 		settings.content.cancel()
 	}
 	settings.content.name = ""
+	s.cursorShapeDevice = 0
 	s.waylandWLSurfaceDestroy()
 	s.canAttach.Store(false)
 }
@@ -1397,4 +1411,42 @@ func (s *state) plasmaSurfaceSetSkipTaskbar(skip bool) {
 	binary.LittleEndian.PutUint32(msg[8:12], skipVal)
 	_, _ = unix.Write(s.fd, msg[:])
 	slog.Debug("plasmaSurfaceSetSkipTaskbar", "plasmaSurface", s.plasmaSurface, "skip", skip)
+}
+
+func (s *state) ShapeGetPointer(pointer uint32) uint32 {
+	if s.cursorShapeManager == 0 {
+		panic("cursorShapeManager is not initialized")
+		return 0
+	}
+
+	var msg [16]byte
+
+	binary.LittleEndian.PutUint32(msg[:], s.cursorShapeManager)
+	const getPointer = 1
+	binary.LittleEndian.PutUint16(msg[4:6], getPointer)
+	binary.LittleEndian.PutUint16(msg[6:8], waylandHeaderSize+8)
+	cursorId := atomic.AddUint32(&s.currentId, 1)
+	binary.LittleEndian.PutUint32(msg[8:12], cursorId)
+	binary.LittleEndian.PutUint32(msg[12:16], pointer)
+
+	_, _ = unix.Write(s.fd, msg[:])
+	slog.Debug("wp_cursor_shape_manager_v1@get_pointer", "cursorId", cursorId, "pointer", pointer)
+
+	return cursorId
+}
+
+func (s *state) ShapeSetCursor(serial uint32, cursor Cursor) {
+	if s.cursorShapeDevice == 0 {
+		panic("cursorShapeDevice is not initialized")
+	}
+	var msg [16]byte
+
+	binary.LittleEndian.PutUint32(msg[:], s.cursorShapeDevice)
+	const setShape = 1
+	binary.LittleEndian.PutUint16(msg[4:6], setShape)
+	binary.LittleEndian.PutUint16(msg[6:8], waylandHeaderSize+8)
+	binary.LittleEndian.PutUint32(msg[8:12], serial)
+	binary.LittleEndian.PutUint32(msg[12:16], uint32(cursor))
+	_, _ = unix.Write(s.fd, msg[:])
+	slog.Debug("wp_cursor_shape_manager_v1@set_cursor", "serial", serial, "cursor", cursor)
 }
