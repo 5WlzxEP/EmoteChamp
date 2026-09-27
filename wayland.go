@@ -339,7 +339,7 @@ func (s *state) handleDisplayEvent(opcode uint16, msg []byte) {
 		slog.Error("fatal error", "targetID", targetID, "code", code, "error", bufReadString(errorMsg))
 	case waylandWLDisplayEventDeleteID:
 		delID := bufReadU32(msg, &off)
-		slog.Debug("<- wl_display@delete_id", "delID", delID)
+		slog.Debug("-> wl_display@delete_id", "delID", delID)
 	}
 }
 
@@ -348,14 +348,14 @@ func (s *state) handleSHMEvent(opcode uint16, msg []byte) {
 	switch opcode {
 	case waylandSHMPoolEventFormat:
 		format := bufReadU32(msg, &off)
-		slog.Debug("<- wl_shm_pool@format", "wl_shm", s.wlSHM, "format", format, "formatName", colorFormatToName(format))
+		slog.Debug("-> wl_shm_pool@format", "wl_shm", s.wlSHM, "format", format, "formatName", colorFormatToName(format))
 	}
 }
 
 func (s *state) handleBufferEvent(opcode uint16, _ []byte) {
 	switch opcode {
 	case waylandWLBufferEventRelease:
-		slog.Debug("<- wl_buffer@release", "wlBuffer", s.wlBuffer)
+		slog.Debug("-> wl_buffer@release", "wlBuffer", s.wlBuffer)
 		s.wlBuffer = 0
 	}
 }
@@ -365,7 +365,7 @@ func (s *state) handleXDGWMBaseEvent(opcode uint16, msg []byte) {
 	switch opcode {
 	case waylandXdgWMBaseEventPing:
 		ping := bufReadU32(msg, &off)
-		slog.Debug("<- xdg_wm_base@ping", "xdgWMBase", s.xdgWMBase, "ping", ping)
+		slog.Debug("-> xdg_wm_base@ping", "xdgWMBase", s.xdgWMBase, "ping", ping)
 		s.waylandXDGWMBasePong(ping)
 	}
 }
@@ -384,7 +384,7 @@ func (s *state) handleXDGTopLevelEvent(opcode uint16, msg []byte) {
 		}
 
 		//log.Printf("<- xdg_toplevel@%d.configure: width=%d height=%d, states=%v\n", s.xdgToplevel, width, height, state)
-		slog.Debug("<- xdg_toplevel@configure", "xdgToplevel", s.xdgToplevel, "width", width, "height", height, "states", state)
+		slog.Debug("-> xdg_toplevel@configure", "xdgToplevel", s.xdgToplevel, "width", width, "height", height, "states", state)
 		if width > 0 && height > 0 && (width != s.w || height != s.h) {
 			//log.Printf("   resize: %dx%d -> %dx%d\n", s.w, s.h, width, height)
 			//s.lock.Lock()
@@ -405,12 +405,12 @@ func (s *state) handleXDGTopLevelEvent(opcode uint16, msg []byte) {
 		}
 
 	case waylandXdgToplevelEventClose:
-		slog.Log(context.Background(), -5, "<- xdg_toplevel@close", "surface", s.xdgToplevel)
+		slog.Log(context.Background(), -5, "-> xdg_toplevel@close", "surface", s.xdgToplevel)
 		s.xdgToplevel = 0
 	case waylandXdgToplevelEventConfigureBounds:
 		width := bufReadU32(msg, &off)
 		height := bufReadU32(msg, &off)
-		slog.Log(context.Background(), -5, "<- xdg_toplevel@configure_bounds", "surface", s.xdgToplevel, "width", width, "height", height)
+		slog.Log(context.Background(), -5, "-> xdg_toplevel@configure_bounds", "surface", s.xdgToplevel, "width", width, "height", height)
 	case waylandXdgToplevelEventWMCapabilities:
 		capLen := bufReadU32(msg, &off)
 		res := bufReadN(msg, &off, int(roundup4(capLen)))
@@ -418,7 +418,7 @@ func (s *state) handleXDGTopLevelEvent(opcode uint16, msg []byte) {
 		for i := 0; i < int(capLen); i += 4 {
 			capabilities = append(capabilities, xdgTopLevelCapabilitiesToName(binary.NativeEndian.Uint32(res[i:i+4])))
 		}
-		slog.Debug("<- xdg_toplevel@wm_capabilities", "wm", s.xdgWMBase, "capabilities", capabilities)
+		slog.Debug("-> xdg_toplevel@wm_capabilities", "wm", s.xdgWMBase, "capabilities", capabilities)
 	}
 }
 
@@ -436,7 +436,7 @@ func (s *state) handleZxdgToplevelDecorationEvent(opcode uint16, msg []byte) {
 			mode = "server_side"
 		}
 		//log.Printf("<- zxdg_toplevel_decoration@%d.configure: mode=%s\n", s.zxdgToplevelDecoration, mode)
-		slog.Debug("<- zxdg_toplevel_decoration@configure", "zxdg_toplevel_decoration", s.zxdgToplevelDecoration, "mode", mode)
+		slog.Debug("-> zxdg_toplevel_decoration@configure", "zxdg_toplevel_decoration", s.zxdgToplevelDecoration, "mode", mode)
 	}
 }
 
@@ -444,7 +444,7 @@ func (s *state) handleXdgSurfaceEvent(opcode uint16, msg []byte) {
 	if opcode == waylandXdgSurfaceEventConfigure {
 		configure := binary.LittleEndian.Uint32(msg)
 		//log.Printf("<- xdg_surface@%d.configure: %d\n", s.xdgSurface, configure)
-		slog.Debug("<- xdg_surface@configure", "xdgSurface", s.xdgSurface, "configure", configure)
+		slog.Debug("-> xdg_surface@configure", "xdgSurface", s.xdgSurface, "configure", configure)
 		s.waylandXDGSurfaceAckConfigure(configure)
 		if s.redraw.CompareAndSwap(true, false) {
 			//s.viewportSetDestination(s.w, s.h)
@@ -460,20 +460,20 @@ func (s *state) handleWlSurfaceEvent(opcode uint16, msg []byte) {
 	case waylandWLSurfaceEventEnter:
 		output := bufReadU32(msg, &off)
 		//log.Printf("<- wl_surface@%d.enter: output=%d\n", s.wlSurface, output)
-		slog.Debug("<- wl_surface@enter", "wlSurface", s.wlSurface, "output", output)
+		slog.Debug("-> wl_surface@enter", "wlSurface", s.wlSurface, "output", output)
 	case waylandWLSurfaceEventLeave:
 		output := bufReadU32(msg, &off)
 		//log.Printf("<- wl_surface@%d.leave: output=%d\n", s.wlSurface, output)
-		slog.Debug("<- wl_surface@leave", "wlSurface", s.wlSurface, "output", output)
+		slog.Debug("-> wl_surface@leave", "wlSurface", s.wlSurface, "output", output)
 	case waylandWLSurfaceEventPreferredBufferScale:
 		factor := bufReadU32(msg, &off)
 		//log.Printf("<- wl_surface@%d.preferred_buffer_scale: %d (HiDPI not implemented; rendering unscaled)\n",
 		//	s.wlSurface, factor)
-		slog.Debug("<- wl_surface@preferred_buffer_scale (HiDPI not implemented; rendering unscaled)", "wlSurface", s.wlSurface, "factor", factor)
+		slog.Debug("-> wl_surface@preferred_buffer_scale (HiDPI not implemented; rendering unscaled)", "wlSurface", s.wlSurface, "factor", factor)
 	case waylandWLSurfaceEventPreferredBufferTransform:
 		transform := bufReadU32(msg, &off)
 		//log.Printf("<- wl_surface@%d.preferred_buffer_transform: %d (not implemented)\n", s.wlSurface, transform)
-		slog.Debug("<- wl_surface@preferred_buffer_transform (not implemented)", "surface", s.wlSurface, "transform", transform)
+		slog.Debug("-> wl_surface@preferred_buffer_transform (not implemented)", "surface", s.wlSurface, "transform", transform)
 	}
 }
 
@@ -504,14 +504,14 @@ func (s *state) handleWlPointerEvent(opcode uint16, msg []byte) {
 		s.pointerOverSurface = true
 		s.cursorLatestEnter = serial
 		//log.Printf("<- wl_pointer@%d.enter: serial=%d pos=%d,%d\n", s.wlPointer, serial, sx, sy)
-		slog.Debug("<- wl_pointer@enter", "wlPointer", s.wlPointer, "serial", serial, "sx", sx, "sy", sy)
+		slog.Debug("-> wl_pointer@enter", "wlPointer", s.wlPointer, "serial", serial, "sx", sx, "sy", sy)
 		updateCursor(s)
 	case Leave:
 		serial := bufReadU32(msg, &offset)
 		bufReadU32(msg, &offset) // surface
 		s.pointerOverSurface = false
 		//log.Printf("<- wl_pointer@%d.leave: serial=%d\n", s.wlPointer, serial)
-		slog.Debug("<- wl_pointer@leave", "wlPointer", s.wlPointer, "serial", serial)
+		slog.Debug("-> wl_pointer@leave", "wlPointer", s.wlPointer, "serial", serial)
 		s.cursorCurrent = 0
 	case Motion:
 		bufReadU32(msg, &offset)
@@ -525,7 +525,7 @@ func (s *state) handleWlPointerEvent(opcode uint16, msg []byte) {
 		button := bufReadU32(msg, &offset)
 		state := bufReadU32(msg, &offset)
 		//log.Printf("<- wl_pointer@%d.button: serial=%d button=%#x state=%d\n", s.wlPointer, serial, button, state)
-		slog.Debug("<- wl_pointer@button \n", "wlPointer", s.wlPointer, "serial", serial, "button", button, "state", state)
+		slog.Debug("-> wl_pointer@button \n", "wlPointer", s.wlPointer, "serial", serial, "button", button, "state", state)
 
 		if button == waylandPointerButtonLeft && state == 1 {
 			// Left button pressed inside the bottom-right grab area:
@@ -548,7 +548,7 @@ func (s *state) handleWlPointerEvent(opcode uint16, msg []byte) {
 		//ignore
 		updateCursor(s)
 	default:
-		log.Printf("<- wl_pointer@%d.%d: unhandled\n", s.wlPointer, opcode)
+		log.Printf("-> wl_pointer@%d.%d: unhandled\n", s.wlPointer, opcode)
 	}
 }
 
@@ -701,7 +701,7 @@ func (s *state) waylandWLRegistryBind(name uint32, iface []byte, ifaceLen, versi
 		os.Exit(1)
 	}
 	//log.Printf("-> wl_registry@%d.bind: name=%d interface=%s version=%d id=%d\n", s.wlRegistry, name, bufReadString(iface), version, s.currentId)
-	slog.Debug("-> wl_registry@bind", "registry", s.wlRegistry, "name", name, "interface", bufReadString(iface), "version", version, "id", id)
+	slog.Debug("<- wl_registry@bind", "registry", s.wlRegistry, "name", name, "interface", bufReadString(iface), "version", version, "id", id)
 	return id
 }
 
@@ -721,7 +721,7 @@ func (s *state) waylandWLSurfaceDamage() {
 	binary.LittleEndian.PutUint32(msg[20:], max(s.h, s.viewHeight)) // height
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Log(context.Background(), -5, "-> wl_surface@damage", "surface", s.wlSurface, "width", s.w, "height", s.h)
+	slog.Log(context.Background(), -5, "<- wl_surface@damage", "surface", s.wlSurface, "width", s.w, "height", s.h)
 }
 
 func (s *state) waylandWLSurfaceAttach() {
@@ -739,7 +739,7 @@ func (s *state) waylandWLSurfaceAttach() {
 	}
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Log(context.Background(), -5, "-> wl_surface@attach", "surface", s.wlSurface, "buffer", s.wlBuffer)
+	slog.Log(context.Background(), -5, "<- wl_surface@attach", "surface", s.wlSurface, "buffer", s.wlBuffer)
 }
 
 func (s *state) waylandWLSurfaceCommit() {
@@ -752,7 +752,7 @@ func (s *state) waylandWLSurfaceCommit() {
 	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Log(context.Background(), -5, "-> wl_surface@commit", "surface", s.wlSurface)
+	slog.Log(context.Background(), -5, "<- wl_surface@commit", "surface", s.wlSurface)
 }
 
 func (s *state) wlBufferDestroy() {
@@ -763,7 +763,7 @@ func (s *state) wlBufferDestroy() {
 	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> wl_buffer@destroy", "buffer", s.wlBuffer)
+	slog.Debug("<- wl_buffer@destroy", "buffer", s.wlBuffer)
 }
 
 func (s *state) waylandXDGWMBasePong(ping uint32) {
@@ -774,7 +774,7 @@ func (s *state) waylandXDGWMBasePong(ping uint32) {
 	binary.LittleEndian.PutUint32(msg[8:], ping)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> xdg_wm_base@pong", "wm", s.xdgWMBase, "ping", ping)
+	slog.Debug("<- xdg_wm_base@pong", "wm", s.xdgWMBase, "ping", ping)
 }
 
 func (s *state) waylandXDGSurfaceAckConfigure(configure uint32) {
@@ -785,8 +785,7 @@ func (s *state) waylandXDGSurfaceAckConfigure(configure uint32) {
 	binary.LittleEndian.PutUint32(msg[8:], configure)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	//log.Printf("-> xdg_surface@%d.ack_configure: configure=%d\n", s.xdgSurface, configure)
-	slog.Debug("-> xdg_surface@ack_configure", "xdg_surface", s.xdgSurface, "configure", configure)
+	slog.Debug("<- xdg_surface@ack_configure", "xdg_surface", s.xdgSurface, "configure", configure)
 
 	s.canAttach.Store(true)
 }
@@ -803,7 +802,7 @@ func (s *state) waylandXDGToplevelResize(serial uint32, edges uint32) {
 	binary.LittleEndian.PutUint32(msg[16:], edges)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> xdg_toplevel@resize", "toplevel", s.xdgToplevel, "seat", s.wlSeat, "serial", serial, "edges", edges)
+	slog.Debug("<- xdg_toplevel@resize", "toplevel", s.xdgToplevel, "seat", s.wlSeat, "serial", serial, "edges", edges)
 }
 
 func (s *state) waylandWLCompositorCreateSurface() uint32 {
@@ -816,7 +815,7 @@ func (s *state) waylandWLCompositorCreateSurface() uint32 {
 	binary.LittleEndian.PutUint32(msg[8:], id)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> wl_compositor@create_surface", "compositor", s.wlCompositor, "surface", id)
+	slog.Debug("<- wl_compositor@create_surface", "compositor", s.wlCompositor, "surface", id)
 	return id
 }
 
@@ -832,7 +831,7 @@ func (s *state) waylandXdgWMBaseGetXdgSurface(surface uint32) uint32 {
 	binary.LittleEndian.PutUint32(msg[12:], surface)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> xdg_wm_base@get_xdg_surface", "wm", s.xdgWMBase, "surface", id, "wlSurface", s.wlSurface)
+	slog.Debug("<- xdg_wm_base@get_xdg_surface", "wm", s.xdgWMBase, "surface", id, "wlSurface", s.wlSurface)
 	return id
 }
 
@@ -847,7 +846,7 @@ func (s *state) waylandXDGSurfaceGetToplevel() uint32 {
 	binary.LittleEndian.PutUint32(msg[8:], id)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> xdg_surface@get_toplevel", "surface", s.xdgSurface, "toplevel", id)
+	slog.Debug("<- xdg_surface@get_toplevel", "surface", s.xdgSurface, "toplevel", id)
 	return id
 }
 
@@ -883,7 +882,7 @@ func (s *state) waylandXDGToplevelSetAppID(appID string) {
 	}
 
 	_, _ = unix.Write(s.fd, msg[:off])
-	slog.Debug("-> xdg_toplevel@set_app_id", "toplevel", s.xdgToplevel, "appID", appID)
+	slog.Debug("<- xdg_toplevel@set_app_id", "toplevel", s.xdgToplevel, "appID", appID)
 }
 
 func (s *state) waylandXDGToplevelSetTitle(title string) {
@@ -920,7 +919,7 @@ func (s *state) waylandXDGToplevelSetTitle(title string) {
 	}
 
 	_, _ = unix.Write(s.fd, msg[:off])
-	slog.Debug("-> xdg_toplevel@set_title", "toplevel", s.xdgToplevel, "title", title)
+	slog.Debug("<- xdg_toplevel@set_title", "toplevel", s.xdgToplevel, "title", title)
 }
 
 func (s *state) waylandZxdgDecorationManagerGetToplevelDecoration() uint32 {
@@ -935,7 +934,7 @@ func (s *state) waylandZxdgDecorationManagerGetToplevelDecoration() uint32 {
 	binary.LittleEndian.PutUint32(msg[12:], s.xdgToplevel)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> zxdg_decoration_manager@get_toplevel_decoration", "deco", s.zxdgDecoManager, "toplevel", s.xdgToplevel)
+	slog.Debug("<- zxdg_decoration_manager@get_toplevel_decoration", "deco", s.zxdgDecoManager, "toplevel", s.xdgToplevel)
 	return id
 }
 
@@ -948,7 +947,7 @@ func (s *state) waylandZxdgToplevelDecorationSetMode(mode uint32) {
 	binary.LittleEndian.PutUint32(msg[8:], mode)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> zxdg_toplevel_decoration@set_mode", "deco", s.zxdgToplevelDecoration, "mode", mode)
+	slog.Debug("<- zxdg_toplevel_decoration@set_mode", "deco", s.zxdgToplevelDecoration, "mode", mode)
 }
 
 func (s *state) waylandWLSeatGetPointer() uint32 {
@@ -962,7 +961,7 @@ func (s *state) waylandWLSeatGetPointer() uint32 {
 	binary.LittleEndian.PutUint32(msg[8:], id)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("->wl_seat@get_pointer", "wlSeat", s.wlSeat, "wlPointer", id)
+	slog.Debug("<- wl_seat@get_pointer", "wlSeat", s.wlSeat, "wlPointer", id)
 	return id
 }
 
@@ -982,7 +981,7 @@ func (s *state) getViewport() {
 	binary.LittleEndian.PutUint32(msg[12:], s.wlSurface)
 	s.viewport = id
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("->wp_viewporter@get_viewport", "wpViewporter", s.wpViewporter, "viewport", s.viewport)
+	slog.Debug("<- wp_viewporter@get_viewport", "wpViewporter", s.wpViewporter, "viewport", s.viewport)
 }
 
 func (s *state) createWindow() {
@@ -1021,6 +1020,10 @@ func (s *state) createWindow() {
 		if s.cursorShapeManager != 0 {
 			s.cursorShapeDevice = s.ShapeGetPointer(s.wlPointer)
 		}
+
+		if s.dataDeviceManager != 0 {
+			s.dataDevice = s.dataDeviceGetDataDevice(s.wlSeat)
+		}
 	}
 }
 
@@ -1041,7 +1044,7 @@ func (s *state) viewportSetSource(x, y, width, height Fixed) {
 	binary.LittleEndian.PutUint32(msg[20:], uint32(height))
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("viewport@setSource", "viewport", s.viewport, "x", x, "y", y, "width", width, "height", height)
+	slog.Debug("<- viewport@setSource", "viewport", s.viewport, "x", x, "y", y, "width", width, "height", height)
 }
 
 func (s *state) viewportSetDestination(width, height uint32) {
@@ -1059,7 +1062,7 @@ func (s *state) viewportSetDestination(width, height uint32) {
 	binary.LittleEndian.PutUint32(msg[12:], height)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("viewport@setDestination", "viewport", s.viewport, "width", width, "height", height)
+	slog.Debug("<- viewport@setDestination", "viewport", s.viewport, "width", width, "height", height)
 }
 
 // ensureBuffer guarantees a wl_buffer matching the current s.w/s.h, carved
@@ -1155,7 +1158,7 @@ func (s *state) waylandWLShmPoolResize() {
 	binary.LittleEndian.PutUint32(msg[8:], s.shmPoolSize)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> wl_shm_pool@resize", "pool", s.wlSHMPool, "size", s.shmPoolSize)
+	slog.Debug("<- wl_shm_pool@resize", "pool", s.wlSHMPool, "size", s.shmPoolSize)
 }
 
 func (s *state) waylandWLBufferDestroy() {
@@ -1166,7 +1169,7 @@ func (s *state) waylandWLBufferDestroy() {
 	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> wl_buffer@destroy", "buffer", s.wlBuffer)
+	slog.Debug("<- wl_buffer@destroy", "buffer", s.wlBuffer)
 
 	s.wlBuffer = 0
 }
@@ -1187,7 +1190,7 @@ func (s *state) waylandWLShmPoolCreateBuffer(pool, offset, width, height, stride
 	binary.LittleEndian.PutUint32(msg[28:], format)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> wl_shm_pool@create_buffer", "pool", pool, "buffer", id)
+	slog.Debug("<- wl_shm_pool@create_buffer", "pool", pool, "buffer", id)
 	return id
 }
 
@@ -1222,7 +1225,7 @@ func (s *state) waylandWLShmCreatePool(size uint32, fd int32) uint32 {
 		_, _ = fmt.Fprintf(os.Stderr, "sendmsg error: %v\n", err)
 		os.Exit(1)
 	}
-	slog.Debug("-> wl_shm@create_pool", "shm", s.wlSHM, "pool", id)
+	slog.Debug("<- wl_shm@create_pool", "shm", s.wlSHM, "pool", id)
 	return id
 }
 
@@ -1239,7 +1242,7 @@ func (s *state) waylandWLSurfaceDestroy() {
 	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> wl_surface@destroy", "surface", s.wlSurface)
+	slog.Debug("<- wl_surface@destroy", "surface", s.wlSurface)
 	s.wlSurface = 0
 }
 
@@ -1265,7 +1268,7 @@ func (s *state) iconManagerCreateIcon() {
 	binary.LittleEndian.PutUint32(msg[8:], id)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> xdg_icon_manager_v1@create_icon", "icon_manager", s.iconManager, "icon", id)
+	slog.Debug("<- xdg_icon_manager_v1@create_icon", "icon_manager", s.iconManager, "icon", id)
 	s.iconInstant = id
 }
 
@@ -1281,7 +1284,7 @@ func (s *state) iconManagerSetIcon(xdgToplevel, icon uint32) {
 	binary.LittleEndian.PutUint32(msg[12:], icon)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> xdg_icon_manager_v1@set_icon", "icon_manager", s.iconManager, "xdg_toplevel", xdgToplevel, "icon", icon)
+	slog.Debug("<- xdg_icon_manager_v1@set_icon", "icon_manager", s.iconManager, "xdg_toplevel", xdgToplevel, "icon", icon)
 }
 
 func (s *state) iconAddBuffer(buffer, scale uint32) {
@@ -1296,7 +1299,7 @@ func (s *state) iconAddBuffer(buffer, scale uint32) {
 	binary.LittleEndian.PutUint32(msg[12:], scale)
 
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("-> xdg_icon_manager_v1@add_buffer", "icon", s.iconInstant, "buffer", buffer, "scale", scale)
+	slog.Debug("<- xdg_icon_manager_v1@add_buffer", "icon", s.iconInstant, "buffer", buffer, "scale", scale)
 }
 
 func (s *state) setupIcon() {
@@ -1527,7 +1530,7 @@ func (s *state) ShapeSetCursor(serial uint32, cursor Cursor) {
 	binary.LittleEndian.PutUint32(msg[8:12], serial)
 	binary.LittleEndian.PutUint32(msg[12:16], uint32(cursor))
 	_, _ = unix.Write(s.fd, msg[:])
-	slog.Debug("wp_cursor_shape_manager_v1@set_cursor", "serial", serial, "cursor", cursor)
+	slog.Debug("<- wp_cursor_shape_manager_v1@set_cursor", "serial", serial, "cursor", cursor)
 }
 
 func (s *state) dataDeviceGetDataDevice(seat uint32) uint32 {
