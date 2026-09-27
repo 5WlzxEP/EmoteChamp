@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"io"
 	"io/fs"
 	"log"
 	"log/slog"
@@ -80,6 +81,12 @@ type state struct {
 	cursorShapeDevice  uint32
 	cursorCurrent      Cursor
 	cursorLatestEnter  uint32
+
+	// drag and drop
+	dataDeviceManager uint32
+	dataDevice        uint32
+	dataOffer         uint32
+	dataTypes         []string
 
 	plasmaShell   uint32
 	plasmaSurface uint32
@@ -269,6 +276,10 @@ func (s *state) handleEvent(buf []byte) {
 		s.handleWlSeatEvent(opcode, buf[*off:])
 	case s.iconManager:
 		s.handleIconManagerEvent(opcode, buf[*off:])
+	case s.dataDevice:
+		s.handleDataDeviceEvent(opcode, buf[*off:])
+	case s.dataOffer:
+		s.handleDataOfferEvent(opcode, buf[*off:])
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "unhandled: object_id=%d opcode=%d\n", objectID, opcode)
 	}
@@ -306,6 +317,8 @@ func (s *state) handleRegistryEvent(opcode uint16, msg []byte) {
 			s.plasmaShell = s.waylandWLRegistryBind(name, iface, ifaceLen, version)
 		case "wp_cursor_shape_manager_v1":
 			s.cursorShapeManager = s.waylandWLRegistryBind(name, iface, ifaceLen, version)
+		case "wl_data_device_manager":
+			s.dataDeviceManager = s.waylandWLRegistryBind(name, iface, ifaceLen, version)
 		default:
 			slog.Debug("Not binding to", "iface", ifaceName, "version", version)
 		}
@@ -586,6 +599,72 @@ func (s *state) handleIconManagerEvent(opcode uint16, buf []byte) {
 	case Done:
 		slog.Debug("-> icon_manager@done", "iconManager", s.iconManager)
 		s.setupIcon()
+	}
+}
+
+func (s *state) handleDataDeviceEvent(opcode uint16, buf []byte) {
+	const (
+		DataOffer = iota
+		Enter
+		Leave
+		Motion
+		Drop
+		Selection
+	)
+
+	switch opcode {
+	case DataOffer:
+		s.dataOffer = binary.LittleEndian.Uint32(buf)
+		slog.Debug("-> data_device@data_offer", "dataDevice", s.dataDevice, "dataOffer", s.dataOffer)
+	case Enter:
+		if len(buf) != 20 {
+			slog.Error("invalid data device enter event", "dataDevice", s.dataDevice, "opcode", opcode, "buf", buf)
+		}
+		serial := binary.LittleEndian.Uint32(buf)
+		surface := binary.LittleEndian.Uint32(buf[4:])
+		x := binary.LittleEndian.Uint32(buf[8:])
+		y := binary.LittleEndian.Uint32(buf[12:])
+		id := binary.LittleEndian.Uint32(buf[16:])
+		slog.Debug("-> data_device@enter", "dataDevice", s.dataDevice, "serial", serial, "surface", surface, "x", x, "y", y, "id", id)
+
+	case Leave:
+		slog.Debug("-> data_device@leave", "dataDevice", s.dataDevice)
+		s.dataOffer = 0
+		s.dataTypes = nil
+	case Motion:
+	// ignore
+	case Drop:
+		slog.Debug("-> data_device@drop", "dataDevice", s.dataDevice)
+
+	// TODO accept/deny
+	case Selection:
+		//s.dataOffer = binary.LittleEndian.Uint32(buf)
+		slog.Debug("-> data_device@selection", "dataDevice", s.dataDevice, "dataOffer", s.dataOffer)
+	}
+}
+
+func (s *state) handleDataOfferEvent(opcode uint16, buf []byte) {
+	const (
+		Offer = iota
+		SourceActions
+		Action
+	)
+	switch opcode {
+	case Offer:
+		mimeLen := binary.LittleEndian.Uint32(buf)
+		mimeType := bufReadString(buf[4 : 4+mimeLen])
+		slog.Debug("-> data_offer@offer", "dataDevice", s.dataDevice, "mimeLen", mimeLen, "mimeType", mimeType)
+
+		//if mimeType == "TEXT" {
+		//	s.dataOfferAccept(0, []byte(mimeType))
+		//}
+		s.dataTypes = append(s.dataTypes, mimeType)
+	case SourceActions:
+		actions := binary.LittleEndian.Uint32(buf)
+		slog.Debug("-> data_device@source_actions", "dataDevice", s.dataDevice, "actions", actions)
+	case Action:
+		actions := binary.LittleEndian.Uint32(buf)
+		slog.Debug("-> data_device@action", "dataDevice", s.dataDevice, "actions", actions)
 	}
 }
 
@@ -1450,3 +1529,106 @@ func (s *state) ShapeSetCursor(serial uint32, cursor Cursor) {
 	_, _ = unix.Write(s.fd, msg[:])
 	slog.Debug("wp_cursor_shape_manager_v1@set_cursor", "serial", serial, "cursor", cursor)
 }
+
+func (s *state) dataDeviceGetDataDevice(seat uint32) uint32 {
+	var msg [16]byte
+
+	binary.LittleEndian.PutUint32(msg[:], s.dataDeviceManager)
+	const getDataDevice = 1
+	binary.LittleEndian.PutUint16(msg[4:6], getDataDevice)
+	binary.LittleEndian.PutUint16(msg[6:8], waylandHeaderSize+8)
+	id := atomic.AddUint32(&s.currentId, 1)
+	binary.LittleEndian.PutUint32(msg[8:], id)
+	binary.LittleEndian.PutUint32(msg[12:], seat)
+
+	_, _ = unix.Write(s.fd, msg[:])
+	slog.Debug("<- wl_data_device_manager@get_data_device", "id", id, "seat", seat)
+	return id
+}
+
+func (s *state) dataOfferAccept(serial uint32, mimeType []byte) {
+	var msg [256]byte
+
+	mimeTypeLen := uint32(len(mimeType)) + 1
+	mimeLen := uint16(roundup4(mimeTypeLen))
+
+	binary.LittleEndian.PutUint32(msg[:], s.dataOffer)
+	const accept = 0
+	binary.LittleEndian.PutUint16(msg[4:], accept)
+
+	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize+8+mimeLen)
+	binary.LittleEndian.PutUint32(msg[8:], serial)
+	binary.LittleEndian.PutUint32(msg[12:], mimeTypeLen)
+	copy(msg[16:], mimeType)
+
+	_, _ = unix.Write(s.fd, msg[:16+mimeLen])
+
+	slog.Debug("<- data_offer@accept", "offer", s.dataOffer, "serial", serial, "mimeType", mimeType)
+}
+
+func (s *state) dataOfferReceive(mimeType []byte) {
+
+	var fds [2]int // read, write
+	err := unix.Pipe2(fds[:], unix.O_CLOEXEC)
+	if err != nil {
+		panic(err)
+	}
+
+	var msg [256]byte
+
+	mimeTypeLen := uint32(len(mimeType)) + 1
+	mimeLen := uint16(roundup4(mimeTypeLen))
+
+	binary.LittleEndian.PutUint32(msg[:], s.dataOffer)
+	const receive = 1
+	binary.LittleEndian.PutUint16(msg[4:], receive)
+
+	binary.LittleEndian.PutUint16(msg[6:], waylandHeaderSize+4+mimeLen)
+	binary.LittleEndian.PutUint32(msg[8:], mimeTypeLen)
+	copy(msg[12:], mimeType)
+
+	oob := unix.UnixRights(fds[1])
+
+	_, err = unix.SendmsgN(s.fd, msg[:12+mimeLen], oob, nil, 0)
+	unix.Close(fds[1])
+	if err != nil {
+		unix.Close(fds[0])
+		_, _ = fmt.Fprintf(os.Stderr, "sendmsg error: %v\n", err)
+		os.Exit(1)
+	}
+
+	slog.Debug("<- data_offer@receive", "offer", s.dataOffer, "mimeType", mimeType)
+
+	// TODO use in a meaningfully manner
+	go func(readFD int) {
+		pipeRead := os.NewFile(uintptr(readFD), "wayland-read-pipe")
+		defer pipeRead.Close()
+
+		mime := strings.ReplaceAll(string(mimeType), "/", "_")
+
+		f, err := os.CreateTemp(tmpDir, mime+"-")
+		if err != nil {
+			slog.Error("failed to create temp file", "error", err)
+			return
+		}
+		defer f.Close()
+
+		fmt.Println("Writing selection to:", f.Name())
+
+		written, err := io.Copy(f, pipeRead)
+		if err != nil {
+			slog.Error("pipe copy error", "error", err)
+			return
+		}
+
+		fmt.Printf("[%s] Finished reading offer (%d bytes).\n", f.Name(), written)
+	}(fds[0])
+}
+
+var tmpDir = func() string {
+	s, err := os.MkdirTemp("", "emotechamp-*")
+	if err != nil {
+		panic(err)
+	}
+	return s
+}()
