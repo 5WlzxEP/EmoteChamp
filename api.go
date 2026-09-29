@@ -26,6 +26,7 @@ func registerApi(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/settings/decoration/{$}", setDecorationHandler)
 	mux.HandleFunc("GET /api/settings/taskbar/{$}", setTaskbarHandler)
 	mux.HandleFunc("GET /api/settings/icon/{$}", setIconHandler)
+	mux.HandleFunc("POST /api/set/emoji/{emoji}/{$}", handleSetEmoji)
 }
 
 func getFile(w http.ResponseWriter, r *http.Request) {
@@ -229,4 +230,9 @@ func setIconHandler(w http.ResponseWriter, r *http.Request) {
 
 	toggleIcon(path.Join(datadir, item.Filename))
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func handleSetEmoji(_ http.ResponseWriter, r *http.Request) {
+	emoji := r.PathValue("emoji")
+	setEmoji(emoji)
 }

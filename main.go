@@ -108,6 +108,22 @@ func toggle(id uuid.UUID) error {
 	return nil
 }
 
+func setEmoji(emoji string) {
+	if surface.wlSurface == 0 {
+		surface.createWindow()
+	} else if settings.content.name == string(emoji) {
+		surface.waylandDestroyWindow()
+		settings.content.name = ""
+		settings.content.source = nil
+		if settings.content.cancel != nil {
+			settings.content.cancel()
+			settings.content.cancel = nil
+		}
+		return
+	}
+	surface.renderEmoji(emoji)
+}
+
 func setDecoration(deco bool) {
 	current := settings.Decorations
 	settings.Decorations = deco

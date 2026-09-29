@@ -1251,7 +1251,6 @@ func (s *state) waylandDestroyWindow() {
 		settings.content.cancel()
 	}
 	settings.content.name = ""
-	s.cursorShapeDevice = 0
 	s.waylandWLSurfaceDestroy()
 	s.canAttach.Store(false)
 }
@@ -1328,7 +1327,7 @@ func (s *state) setupIcon() {
 	offset := uint32(0)
 	for _, size := range s.IconSizes {
 		buffer := s.waylandWLShmPoolCreateBuffer(pool, offset, size, size, size*4, waylandFormatARGB8888)
-		img2 := WayImage{
+		img2 := WayIconImage{
 			data: data[offset : offset+size*size*4],
 			size: int(size),
 		}
@@ -1398,20 +1397,20 @@ func (s *state) waylandWLShmPoolDestroy(pool uint32) {
 	slog.Debug("waylandWLShmPoolDestroy", "pool", pool)
 }
 
-type WayImage struct {
+type WayIconImage struct {
 	data []byte
 	size int
 }
 
-func (w *WayImage) ColorModel() color.Model {
+func (w *WayIconImage) ColorModel() color.Model {
 	return color.RGBAModel
 }
 
-func (w *WayImage) Bounds() image.Rectangle {
+func (w *WayIconImage) Bounds() image.Rectangle {
 	return image.Rect(0, 0, w.size, w.size)
 }
 
-func (w *WayImage) At(x, y int) color.Color {
+func (w *WayIconImage) At(x, y int) color.Color {
 	return color.RGBA{
 		A: w.data[(y*w.size+x)*4+3],
 		R: w.data[(y*w.size+x)*4+2],
@@ -1420,7 +1419,7 @@ func (w *WayImage) At(x, y int) color.Color {
 	}
 }
 
-func (w *WayImage) Set(x, y int, c color.Color) {
+func (w *WayIconImage) Set(x, y int, c color.Color) {
 	R, G, B, A := c.RGBA()
 	w.data[(y*w.size+x)*4+3] = uint8(A >> 8)
 	w.data[(y*w.size+x)*4+2] = uint8(R >> 8)
@@ -1605,7 +1604,7 @@ func (s *state) dataOfferReceive(mimeType []byte) {
 	// TODO use in a meaningfully manner
 	go func(readFD int) {
 		pipeRead := os.NewFile(uintptr(readFD), "wayland-read-pipe")
-		defer pipeRead.Close()
+		defer LogFailedClose(pipeRead.Close)
 
 		mime := strings.ReplaceAll(string(mimeType), "/", "_")
 
@@ -1614,7 +1613,7 @@ func (s *state) dataOfferReceive(mimeType []byte) {
 			slog.Error("failed to create temp file", "error", err)
 			return
 		}
-		defer f.Close()
+		defer LogFailedClose(f.Close)
 
 		fmt.Println("Writing selection to:", f.Name())
 

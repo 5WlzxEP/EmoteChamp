@@ -86,6 +86,14 @@
                 window.location.reload();
             }
         }
+        const sendEmoji = async () => {
+            const emoji = document.getElementById("emoji").value
+            if (emoji.length === 0) {
+                return
+            }
+            console.log(emoji, emoji.slice(0, 1))
+            await fetch(`/api/set/emoji/${emoji}/`, {method: "POST"}).catch(console.error)
+        }
     </script>
 </head>
 <body>
@@ -103,6 +111,14 @@
             <p>{{.Created}}</p>
         </div>
     {{end}}
+    <div class="card">
+        Input will be truncated to first emoji
+        <form class="img-container">
+            <label for="emoji">Select Emoji</label>
+            <input type="text" id="emoji" name="emoji" placeholder="🚀">
+            <input type="submit" formaction="javascript:sendEmoji()" value="Submit">
+        </form>
+    </div>
 </div>
 
 <div>
