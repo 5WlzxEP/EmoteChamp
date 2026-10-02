@@ -448,8 +448,9 @@ func (s *state) handleXdgSurfaceEvent(opcode uint16, msg []byte) {
 		s.waylandXDGSurfaceAckConfigure(configure)
 		if s.redraw.CompareAndSwap(true, false) {
 			//s.viewportSetDestination(s.w, s.h)
-			//s.waylandWLSurfaceCommit()
-			s.drawContent()
+			s.waylandWLSurfaceDamage()
+			s.waylandWLSurfaceCommit()
+			//s.drawContent()
 		}
 	}
 }
