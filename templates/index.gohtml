@@ -40,17 +40,17 @@
 
                 return
             }
-            await fetch(`/api/toggle/${id}/`)
+            await fetch(`/api/toggle/${id}/`, {method: "POST"}).catch(console.error)
         }
         const toggleDecorations = async (set) => {
-            await fetch(`/api/settings/decoration/?deco=${set}`)
+            await fetch(`/api/settings/decoration/?deco=${set}`, {method: "POST"})
         }
         const taskbar = async (set) => {
-            await fetch(`/api/settings/taskbar/?taskbar=${set}`)
+            await fetch(`/api/settings/taskbar/?taskbar=${set}`, {method: "POST"})
         }
         const icon = async () => {
             const val = document.getElementById("icon").value
-            await fetch(`/api/settings/icon/?icon=${val}`)
+            await fetch(`/api/settings/icon/?icon=${val}`, {method: "POST"})
         }
 
         const add = async () => {
@@ -66,13 +66,16 @@
             }
 
             try {
-                const formData = new FormData();
-                formData.append("info", JSON.stringify({ name: name.trim() }));
-                formData.append("file", file[0]);
+                // const formData = new FormData();
+                // formData.append("info", JSON.stringify({ name: name.trim() }));
+                // formData.append("file", file[0]);
 
                 const res = await fetch("http://localhost:8080/api/items/", {
                     method: "POST",
-                    body: formData,
+                    headers: {
+                        "Name": name.trim(),
+                    },
+                    body: file[0],
                 });
 
                 if (!res.ok) {

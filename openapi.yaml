@@ -1,0 +1,146 @@
+openapi: "3.1.0"
+info:
+  title: "EmoteChamp API"
+  description: "EmoteChamp API"
+  version: "1.0.0"
+servers:
+  - url: "http://127.0.0.1:8080"
+paths:
+  /api/file/{id}/:
+    get:
+      summary: "Returns file for id"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema: { type: uuid }
+      responses:
+        "200":
+          description: "OK"
+
+  /api/items/:
+    get:
+      summary: "Returns all items"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                      example: "01a0fce9-555a-7879-b92b-05da717425cc"
+                    name:
+                      type: string
+                      example: "Item Name"
+                    created:
+                      type: string
+                      format: date-time
+                      example: "2026-10-02T13:59:05Z"
+                    type:
+                      $ref: "#/components/schemas/Type"
+
+    post:
+      summary: "Upload a file"
+      parameters:
+        - name: Name
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        description: "File to upload"
+        content:
+          "image/png": {}
+          "image/webp": {}
+          "image/jpeg": {}
+          "image/gif": {}
+          "audio/vnd.wav": {}
+          "audio/mpeg": {}
+          "audio/ogg": {}
+          "audio/flac": {}
+      responses:
+        "200":
+          description: "OK"
+
+  /api/set/emoji/{emoji}/:
+    post:
+      summary: "Set an emoji"
+      description: "Displays the emoji. if multiple emojis are provided, the first one is used."
+      parameters:
+        - name: "emoji"
+          in: "path"
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: "OK"
+
+  /api/settings/decoration/:
+    post:
+      summary: "Sets the decoration"
+      description: "Sets the decoration of the application."
+      parameters:
+        - name: deco
+          in: query
+          required: true
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: "OK"
+
+  /api/settings/icon/:
+    post:
+      summary: "Set the icon"
+      description: "Set the icon of the application to the item. It animated, the first frame is used as the icon."
+      parameters:
+        - name: icon
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: "OK"
+
+  /api/settings/taskbar/:
+    post:
+      summary: "Set the taskbar visibility"
+      parameters:
+        - name: taskbar
+          in: query
+          required: true
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: "OK"
+
+  /api/toggle/{id}/:
+    post:
+      summary: "Toggle an Item"
+      description: "Sets an emote/image visible if it is hidden, and hidden if it is visible"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: "OK"
+
+
+components:
+  schemas:
+    Type:
+      type: number
+      enum: [0, 1, 2, 3]

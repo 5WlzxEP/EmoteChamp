@@ -2,11 +2,9 @@ package main
 
 import (
 	"encoding/json/v2"
-	"errors"
 	"io"
 	"log"
 	"log/slog"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path"
@@ -22,10 +20,10 @@ func registerApi(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/items/{$}", getAll)
 	mux.HandleFunc("POST /api/items/{$}", addItem)
 	mux.HandleFunc("GET /api/file/{id}/{$}", getFile)
-	mux.HandleFunc("GET /api/toggle/{id}/{$}", toggleHandler)
-	mux.HandleFunc("GET /api/settings/decoration/{$}", setDecorationHandler)
-	mux.HandleFunc("GET /api/settings/taskbar/{$}", setTaskbarHandler)
-	mux.HandleFunc("GET /api/settings/icon/{$}", setIconHandler)
+	mux.HandleFunc("POST /api/toggle/{id}/{$}", toggleHandler)
+	mux.HandleFunc("POST /api/settings/decoration/{$}", setDecorationHandler)
+	mux.HandleFunc("POST /api/settings/taskbar/{$}", setTaskbarHandler)
+	mux.HandleFunc("POST /api/settings/icon/{$}", setIconHandler)
 	mux.HandleFunc("POST /api/set/emoji/{emoji}/{$}", handleSetEmoji)
 }
 
@@ -78,105 +76,68 @@ func getAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func addItem(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(10 << 20) // 10 MiB
+	name := r.Header.Get("Name")
+	id := uuid.NewV7()
+
+	if name == "" {
+		name = id.String()
+	}
+
+	var fileExt string
+	var type_ int
+	switch r.Header.Get("Content-Type") {
+	case "image/png":
+		fileExt = ".png"
+		type_ = 1
+	case "image/webp":
+		fileExt = ".webp"
+		type_ = 1
+	case "image/jpeg":
+		fileExt = ".jpeg"
+		type_ = 1
+	case "image/gif":
+		fileExt = ".gif"
+		type_ = 1
+	case "audio/vnd.wav":
+		fileExt = ".wav"
+		type_ = 2
+	case "audio/mpeg":
+		fileExt = ".mp3"
+		type_ = 2
+	case "audio/ogg":
+		fileExt = ".ogg"
+		type_ = 2
+	case "audio/flac":
+		fileExt = ".flac"
+		type_ = 2
+	default:
+		http.Error(w, "Invalid file type", http.StatusBadRequest)
+		return
+	}
+
+	f, err := os.Create(path.Join(datadir, id.String()+fileExt))
 	if err != nil {
-		log.Println("error parsing multipart form", err)
+		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer LogFailedClose(r.MultipartForm.RemoveAll)
+	defer LogFailedClose(f.Close)
 
-	var name string
-	var file uuid.UUID
-	var filename string
-	Type := 0
-
-	for k, v := range r.MultipartForm.Value {
-		if k == "info" && len(v) == 1 {
-			var res struct {
-				Name string `json:"name"`
-			}
-
-			err := json.Unmarshal([]byte(v[0]), &res)
-			if err != nil {
-				log.Println(err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			name = res.Name
-		} else {
-			http.Error(w, "Invalid request", http.StatusBadRequest)
-			return
-		}
-	}
-
-	for k, v := range r.MultipartForm.File {
-		if k == "file" && len(v) == 1 {
-			file, filename, Type, err = formFileSave(v[0])
-			if err != nil {
-				log.Println(err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-		} else {
-			http.Error(w, "Invalid request", http.StatusBadRequest)
-			return
-		}
+	_, err = io.Copy(f, r.Body)
+	if err != nil {
+		log.Println(err)
 	}
 
 	err = db.DB.CreateItem(r.Context(), db.CreateItemParams{
-		ID:       file,
+		ID:       id,
 		Name:     name,
-		Filename: filename,
-		Type:     Type,
+		Filename: id.String() + fileExt,
+		Type:     type_,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-}
-
-func formFileSave(part *multipart.FileHeader) (uuid.UUID, string, int, error) {
-	file := uuid.NewV7()
-
-	type_ := part.Header.Get("Content-Type")
-
-	Type := 0
-	switch type_ {
-	case "image/png", "image/webp", "image/jpeg", "image/gif":
-		Type = 1
-	case "audio/vnd.wav", "audio/mpeg", "audio/ogg", "audio/flac": // TODO add more audio types
-		Type = 2
-	default:
-		return uuid.Nil(), "", 0, errors.New("invalid file type")
-	}
-
-	inFile, err := part.Open()
-	if err != nil {
-		return uuid.Nil(), "", 0, err
-	}
-	defer LogFailedClose(inFile.Close)
-
-	filename := file.String() + "_" + path.Base(part.Filename)
-
-	root, err := os.OpenRoot(datadir)
-	if err != nil {
-		return uuid.Nil(), "", 0, err
-	}
-	defer LogFailedClose(root.Close)
-
-	outFile, err := root.Create(filename)
-	if err != nil {
-		return uuid.Nil(), "", 0, err
-	}
-	defer LogFailedClose(outFile.Close)
-
-	_, err = io.Copy(outFile, inFile)
-	if err != nil {
-		return uuid.Nil(), "", 0, err
-	}
-	return file, filename, Type, nil
 }
 
 func toggleHandler(w http.ResponseWriter, r *http.Request) {

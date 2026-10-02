@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"image/color"
 	gif2 "image/gif"
 	"io"
 	"iter"
@@ -283,6 +282,7 @@ func webp(s *state, name string, f io.ReadSeekCloser) bool {
 	}
 
 	//scaledFrames := make([]image.Image, len(frames.Image))
+	// TODO precompute complete images
 
 	go func() {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -306,34 +306,11 @@ func webp(s *state, name string, f io.ReadSeekCloser) bool {
 			img := frames.Image[i]
 
 			s.lock.Lock()
-			//w, h := img.Bounds().Dx(), img.Bounds().Dy()
-			//if s.w != uint32(w) || s.h != uint32(h) {
-			//	rect := image.Rect(0, 0, int(s.w), int(s.h))
-			//	if scaledFrames[i] != nil && scaledFrames[i].Bounds() == rect {
-			//		img = scaledFrames[i]
-			//	} else {
-			//		nimg := image.NewRGBA(rect)
-			//		draw.ApproxBiLinear.Scale(nimg, nimg.Bounds(), img, img.Bounds(), draw.Src, nil)
-			//		img = nimg
-			//		scaledFrames[i] = img
-			//	}
-			//}
 
-			if uint(s.h*s.stride) < uint(s.h)*uint(s.stride) {
-				panic("multiplication underflow")
-			}
-
-			//s.ensureBuffer(s.h * s.stride)
-			for y := 0; y < img.Bounds().Dy() && y < int(s.h); y++ {
-				for x := 0; x < img.Bounds().Dx() && x < int(s.w); x++ {
-					R, G, B, A := img.At(x, y).RGBA()
-					idx := y*int(s.stride) + x*4
-					s.shmPoolData[idx+0] = uint8(B >> 8)
-					s.shmPoolData[idx+1] = uint8(G >> 8)
-					s.shmPoolData[idx+2] = uint8(R >> 8)
-					s.shmPoolData[idx+3] = uint8(A >> 8)
-				}
-			}
+			drawRGBA(&WayImage{
+				data: s.shmPoolData,
+				size: image.Rect(0, 0, int(s.w), int(s.h)),
+			}, image.Rect(0, 0, int(s.w), int(s.h)), img, img.Bounds().Min)
 
 			for y := img.Bounds().Dy(); y < int(s.h); y++ {
 				for x := 0; x < int(s.w); x++ {
@@ -415,70 +392,24 @@ func (s *state) drawContent() {
 		return
 	}
 
-	//if s.w != uint32(img.Bounds().Dx()) || s.h != uint32(img.Bounds().Dy()) {
-	//	fmt.Println("rescale single image")
-	//	nimg := image.NewRGBA(image.Rect(0, 0, int(s.w), int(s.h)))
-	//	draw.ApproxBiLinear.Scale(nimg, nimg.Bounds(), img, img.Bounds(), draw.Src, nil)
-	//	img = nimg
-	//}
-
 	s.lock.Lock()
 	s.ensureBuffer(s.h * s.stride)
-	for y := 0; y < img.Bounds().Dy() && y < int(s.h); y++ {
-		for x := 0; x < img.Bounds().Dx() && x < int(s.w); x++ {
-			R, G, B, A := img.At(x, y).RGBA()
-			idx := (y*int(s.stride) + x*4)
-			s.shmPoolData[idx+0] = uint8(B >> 8)
-			s.shmPoolData[idx+1] = uint8(G >> 8)
-			s.shmPoolData[idx+2] = uint8(R >> 8)
-			s.shmPoolData[idx+3] = uint8(A >> 8)
+
+	switch im := img.(type) {
+	case *WayImage:
+		copy(s.shmPoolData, im.data)
+	default:
+		wi := WayImage{
+			data: s.shmPoolData,
+			size: image.Rectangle{Min: image.Point{}, Max: image.Point{X: int(s.w), Y: int(s.h)}},
 		}
+
+		DrawMask(&wi, wi.Bounds(), img, image.Point{})
 	}
 	s.lock.Unlock()
 
 	s.waylandWLSurfaceDamage()
 	s.waylandWLSurfaceCommit()
-}
-
-type WayImage struct {
-	data []byte
-	size image.Rectangle
-}
-
-func (w *WayImage) ColorModel() color.Model {
-	return color.RGBAModel
-}
-
-func (w *WayImage) Bounds() image.Rectangle {
-	return w.size
-}
-
-func (w *WayImage) index(x, y int) int {
-	return ((y-w.size.Min.Y)*w.size.Dx() + (x - w.size.Min.X)) * 4
-}
-
-func (w *WayImage) At(x, y int) color.Color {
-	if x < w.size.Min.X || y < w.size.Min.Y || x >= w.size.Max.X || y >= w.size.Max.Y {
-		return color.RGBA{}
-	}
-
-	i := w.index(x, y)
-
-	return color.RGBA{
-		A: w.data[i+3],
-		R: w.data[i+2],
-		G: w.data[i+1],
-		B: w.data[i+0],
-	}
-}
-
-func (w *WayImage) Set(x, y int, c color.Color) {
-	R, G, B, A := c.RGBA()
-	i := w.index(x, y)
-	w.data[i+3] = uint8(A >> 8)
-	w.data[i+2] = uint8(R >> 8)
-	w.data[i+1] = uint8(G >> 8)
-	w.data[i+0] = uint8(B >> 8)
 }
 
 var face2, shaper = func() (*font.Face, shaping.HarfbuzzShaper) {
